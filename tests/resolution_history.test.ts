@@ -22,6 +22,7 @@ async function runTest() {
       hmacSecret: "hmac_sec_test_suite_1234567890abcdef",
       widgetPublicKey: "wpk_live_test_suite_1234567890abcdef",
       onboardingStatus: "completed",
+      createdAt: new Date(),
     };
     await db.insert(companies).values(dummyCompany).onConflictDoNothing();
     companyRows = [dummyCompany];
