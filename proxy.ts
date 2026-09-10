@@ -1,6 +1,24 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-export default clerkMiddleware();
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api/v1(.*)",
+  "/api/webhooks(.*)",
+  "/docs(.*)",
+]);
+
+export default clerkMiddleware(async (auth, req) => {
+  // Allow CORS preflight requests to pass through without auth checks
+  if (req.method === "OPTIONS") {
+    return;
+  }
+
+  if (!isPublicRoute(req)) {
+    await auth.protect();
+  }
+});
 
 export const config = {
   matcher: [

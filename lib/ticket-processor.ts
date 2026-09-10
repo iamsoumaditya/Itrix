@@ -158,7 +158,7 @@ CRITICAL RULES:
 EMPLOYEE TICKET DESCRIPTION:
 "${ticketText}"`;
 
-  const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
+  const candidateModels = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"];
 
   try {
     const res = await geminiPool.generateContent(candidateModels, prompt, {
@@ -276,7 +276,7 @@ Return ONLY a raw JSON object with NO markdown block or formatting:
   "routing_team": "string"
 }`;
 
-  const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
+  const candidateModels = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"];
 
   try {
     const res = await geminiPool.generateContent(candidateModels, prompt, {

@@ -175,13 +175,27 @@ export class GeminiClientPool {
               break;
             }
 
-            // 401 / 403 Invalid or Revoked API Key
-            if (status === 401 || status === 403) {
+            // 400 / 401 / 403 Invalid or Revoked API Key
+            const isInvalidKey =
+              status === 401 ||
+              status === 403 ||
+              (status === 400 && (errBody.includes("API_KEY_INVALID") || errBody.includes("API key not valid")));
+
+            if (isInvalidKey) {
               keyState.status = "failed";
               console.error(
                 `[GeminiClientPool CRITICAL ALERT] Key ending in ...${keyState.key.slice(-4)} permanently failed (HTTP ${status}). Excluding from pool.`
               );
               // Break model loop to immediately try another key in pool
+              break;
+            }
+
+            // 404 Model Not Found / Deprecated
+            if (status === 404) {
+              console.warn(
+                `[GeminiClientPool WARN] Model ${m} returned 404 Not Found (deprecated or unavailable). Skipping model ${m}.`
+              );
+              // Break out of attempt loop to try next candidate model
               break;
             }
 
@@ -268,6 +282,8 @@ export class GeminiClientPool {
             }
 
             const status = res.status;
+            const errBody = await res.text();
+
             if (status === 429) {
               const retryAfterHeader = res.headers.get("retry-after");
               let cooldownMs = 60_000;
@@ -283,10 +299,22 @@ export class GeminiClientPool {
               break;
             }
 
-            if (status === 401 || status === 403) {
+            const isInvalidKey =
+              status === 401 ||
+              status === 403 ||
+              (status === 400 && (errBody.includes("API_KEY_INVALID") || errBody.includes("API key not valid")));
+
+            if (isInvalidKey) {
               keyState.status = "failed";
               console.error(
                 `[GeminiClientPool CRITICAL ALERT] Embedding Key ending in ...${keyState.key.slice(-4)} permanently failed (HTTP ${status}). Excluding from pool.`
+              );
+              break;
+            }
+
+            if (status === 404) {
+              console.warn(
+                `[GeminiClientPool WARN] Embedding Model ${m} returned 404 Not Found (deprecated or unavailable). Skipping model ${m}.`
               );
               break;
             }
