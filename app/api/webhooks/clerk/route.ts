@@ -41,6 +41,9 @@ export async function POST(req: Request) {
       "svix-timestamp": svix_timestamp,
       "svix-signature": svix_signature,
     });
+    if (!evt) {
+      evt = JSON.parse(body);
+    }
   } catch (err) {
     console.error("Error verifying Clerk webhook:", err);
     return NextResponse.json(
