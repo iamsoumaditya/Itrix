@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useUser, useOrganization, UserButton, OrganizationSwitcher } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
+import type { ProcessTicketResult } from "@/lib/ticket-processor";
 import {
   FileText,
   Ticket as TicketIcon,
@@ -18,7 +19,6 @@ import {
   CheckCircle2,
   XCircle,
   Search,
-  Filter,
   Eye,
   EyeOff,
   Copy,
@@ -39,7 +39,6 @@ import {
   FileCode,
   Zap,
   Edit3,
-  Clock,
   History,
 } from "lucide-react";
 
@@ -93,7 +92,7 @@ interface TicketItem {
   sourceReferences?: Array<{ page_url: string; section_title?: string }>;
   autoResolveEligible?: boolean;
   needsManualReview?: boolean;
-  status: "auto_resolved" | "needs_review" | "pending";
+  status: "auto_resolved" | "needs_verification" | "needs_review" | "pending";
   resolved: boolean;
   resolvedBy?: string | null;
   resolvedAt?: string | null;
@@ -128,7 +127,7 @@ export default function CompanyDashboard() {
   // Categories & Priorities Tab State
   const [categoriesList, setCategoriesList] = useState<TicketCategoryItem[]>([]);
   const [prioritiesList, setPrioritiesList] = useState<TicketPriorityItem[]>([]);
-  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [, setLoadingCategories] = useState(false);
   const [showAddCatModal, setShowAddCatModal] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatDesc, setNewCatDesc] = useState("");
@@ -181,15 +180,21 @@ export default function CompanyDashboard() {
   };
 
   useEffect(() => {
-    if (selectedTicket?.id) {
-      setIsEditingSolution(false);
-      setEditedSolutionText(selectedTicket.suggestedResolution || "");
-      setUpdateSolutionError(null);
-      fetchTicketHistory(selectedTicket.id);
+    const tId = selectedTicket?.id;
+    const res = selectedTicket?.suggestedResolution || "";
+    if (tId) {
+      queueMicrotask(() => {
+        setIsEditingSolution(false);
+        setEditedSolutionText(res);
+        setUpdateSolutionError(null);
+        void fetchTicketHistory(tId);
+      });
     } else {
-      setTicketHistory([]);
+      queueMicrotask(() => {
+        setTicketHistory([]);
+      });
     }
-  }, [selectedTicket?.id]);
+  }, [selectedTicket?.id, selectedTicket?.suggestedResolution]);
 
   const handleUpdateSolution = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,13 +242,13 @@ export default function CompanyDashboard() {
   const [raiseEmployeeId, setRaiseEmployeeId] = useState("emp_alex_99");
   const [raiseTicketText, setRaiseTicketText] = useState("");
   const [processingRaise, setProcessingRaise] = useState(false);
-  const [raiseResult, setRaiseResult] = useState<any | null>(null);
+  const [raiseResult, setRaiseResult] = useState<ProcessTicketResult | null>(null);
   const [raiseError, setRaiseError] = useState<string | null>(null);
 
   // Playground State (Does NOT save to DB)
   const [playgroundEmployeeId, setPlaygroundEmployeeId] = useState("emp_test_user");
   const [playgroundInput, setPlaygroundInput] = useState("");
-  const [playgroundResponse, setPlaygroundResponse] = useState<any | null>(null);
+  const [playgroundResponse, setPlaygroundResponse] = useState<ProcessTicketResult | null>(null);
   const [askingPlayground, setAskingPlayground] = useState(false);
   const [playgroundError, setPlaygroundError] = useState<string | null>(null);
 
@@ -253,14 +258,19 @@ export default function CompanyDashboard() {
   const [widgetTextColor, setWidgetTextColor] = useState("#FFFFFF");
   const [copiedScriptSnippet, setCopiedScriptSnippet] = useState(false);
   const [copiedNpmSnippet, setCopiedNpmSnippet] = useState(false);
+  const [copiedNpmCmd, setCopiedNpmCmd] = useState(false);
 
   // Settings State
   const [revealApiKey, setRevealApiKey] = useState(false);
+  const [revealHmacSecret, setRevealHmacSecret] = useState(false);
+  const [copiedApiKey, setCopiedApiKey] = useState(false);
+  const [copiedHmacSecret, setCopiedHmacSecret] = useState(false);
+  const [copiedWidgetPublicKey, setCopiedWidgetPublicKey] = useState(false);
   const [rotatingKey, setRotatingKey] = useState(false);
   const [rotatedKeyAlert, setRotatedKeyAlert] = useState<string | null>(null);
 
   // Load company details
-  const fetchCompanyData = async () => {
+  const fetchCompanyData = useCallback(async () => {
     try {
       const orgId = organization?.id || `org_personal_${user?.id || "demo"}`;
       const orgName = organization?.name || `${user?.firstName || "Company"}'s IT Dept`;
@@ -280,16 +290,18 @@ export default function CompanyDashboard() {
     } finally {
       setLoadingCompany(false);
     }
-  };
+  }, [organization, user]);
 
   useEffect(() => {
     if (isUserLoaded && isOrgLoaded) {
-      fetchCompanyData();
+      void (async () => {
+        await fetchCompanyData();
+      })();
     }
-  }, [isUserLoaded, isOrgLoaded, organization, user]);
+  }, [isUserLoaded, isOrgLoaded, fetchCompanyData]);
 
   // Load docs pages
-  const fetchDocs = async () => {
+  const fetchDocs = useCallback(async () => {
     if (!company?.id) return;
     setLoadingDocs(true);
     try {
@@ -303,10 +315,10 @@ export default function CompanyDashboard() {
     } finally {
       setLoadingDocs(false);
     }
-  };
+  }, [company]);
 
   // Load categories & priorities
-  const fetchCategoriesAndPriorities = async () => {
+  const fetchCategoriesAndPriorities = useCallback(async () => {
     if (!company?.id) return;
     setLoadingCategories(true);
     try {
@@ -319,10 +331,10 @@ export default function CompanyDashboard() {
     } finally {
       setLoadingCategories(false);
     }
-  };
+  }, [company]);
 
   // Load tickets
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     if (!company?.id) return;
     setLoadingTickets(true);
     try {
@@ -342,7 +354,7 @@ export default function CompanyDashboard() {
     } finally {
       setLoadingTickets(false);
     }
-  };
+  }, [company, statusFilter, resolvedFilter, searchEmployee]);
 
   const handleMarkResolved = async (ticketId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -389,11 +401,13 @@ export default function CompanyDashboard() {
 
   useEffect(() => {
     if (company?.id) {
-      if (activeTab === "docs") fetchDocs();
-      if (activeTab === "categories") fetchCategoriesAndPriorities();
-      if (activeTab === "tickets") fetchTickets();
+      void (async () => {
+        if (activeTab === "docs") await fetchDocs();
+        if (activeTab === "categories") await fetchCategoriesAndPriorities();
+        if (activeTab === "tickets") await fetchTickets();
+      })();
     }
-  }, [company?.id, activeTab, statusFilter, resolvedFilter, searchEmployee]);
+  }, [company?.id, activeTab, statusFilter, resolvedFilter, searchEmployee, fetchDocs, fetchCategoriesAndPriorities, fetchTickets]);
 
   // Live polling (1.5s interval) while any doc is in progress in the Docs tab
   useEffect(() => {
@@ -405,11 +419,11 @@ export default function CompanyDashboard() {
 
     if (hasProcessing) {
       const interval = setInterval(() => {
-        fetchDocs();
+        void fetchDocs();
       }, 1500);
       return () => clearInterval(interval);
     }
-  }, [company?.id, activeTab, docsList]);
+  }, [company?.id, activeTab, docsList, fetchDocs]);
 
   // Add new doc link
   const handleAddDoc = async (e: React.FormEvent) => {
@@ -694,16 +708,16 @@ export default function CompanyDashboard() {
     }
   };
 
-  // Code snippets generation
-  const scriptTagSnippet = `<script src="https://yourplatform.com/widget.js"\n  data-org-key="${company?.id || "org_key"}"\n  data-bg-color="${widgetBgColor}"\n  data-fg-color="${widgetFgColor}"\n  data-text-color="${widgetTextColor}">\n</script>`;
+  // Code snippets generator
 
-  const npmSnippet = `// Note: Compute hmacSignature on your company backend using your hmac_secret\nimport { TicketWidget } from '@yourplatform/ticket-widget';\n\n<TicketWidget\n  orgKey="${company?.id || "org_key"}"\n  theme={{\n    background: "${widgetBgColor}",\n    foreground: "${widgetFgColor}",\n    text: "${widgetTextColor}"\n  }}\n  user={{\n    id: employeeId, // Employee ID e.g. emp_12345\n    email: employeeEmail,\n    hmacSignature: signature // Computed via HMAC SHA256 using hmac_secret\n  }}\n/>`;
-
-  const copyToClipboard = (text: string, type: "script" | "npm") => {
+  const copyToClipboard = (text: string, type: "script" | "npm" | "npmCmd") => {
     navigator.clipboard.writeText(text);
     if (type === "script") {
       setCopiedScriptSnippet(true);
       setTimeout(() => setCopiedScriptSnippet(false), 2000);
+    } else if (type === "npmCmd") {
+      setCopiedNpmCmd(true);
+      setTimeout(() => setCopiedNpmCmd(false), 2000);
     } else {
       setCopiedNpmSnippet(true);
       setTimeout(() => setCopiedNpmSnippet(false), 2000);
@@ -1286,7 +1300,7 @@ export default function CompanyDashboard() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g., VPN Access Request"
+                        placeholder="e.g., Password Reset"
                         value={newCatName}
                         onChange={(e) => setNewCatName(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white outline-none focus:border-emerald-500"
@@ -1310,7 +1324,7 @@ export default function CompanyDashboard() {
                       </label>
                       <textarea
                         rows={3}
-                        placeholder="e.g., Requests to grant remote VPN access or Okta MFA setup."
+                        placeholder="e.g., Requests to reset password or grant Excel spreadsheet access."
                         value={newCatDesc}
                         onChange={(e) => setNewCatDesc(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white outline-none focus:border-emerald-500"
@@ -1446,6 +1460,7 @@ export default function CompanyDashboard() {
                 >
                   <option value="all">All AI Statuses</option>
                   <option value="auto_resolved">Auto Resolved</option>
+                  <option value="needs_verification">Needs Verification</option>
                   <option value="needs_review">Needs Review</option>
                   <option value="pending">Pending</option>
                 </select>
@@ -1518,6 +1533,12 @@ export default function CompanyDashboard() {
                                 Auto Resolved
                               </span>
                             )}
+                            {tkt.status === "needs_verification" && (
+                              <span className="px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[11px] font-medium flex items-center gap-1.5 w-fit">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
+                                Needs Verification
+                              </span>
+                            )}
                             {tkt.status === "needs_review" && (
                               <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[11px] font-medium flex items-center gap-1.5 w-fit">
                                 <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
@@ -1525,7 +1546,7 @@ export default function CompanyDashboard() {
                               </span>
                             )}
                             {tkt.status === "pending" && (
-                              <span className="px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[11px] font-medium flex items-center gap-1.5 w-fit">
+                              <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[11px] font-medium flex items-center gap-1.5 w-fit">
                                 Pending
                               </span>
                             )}
@@ -1821,7 +1842,7 @@ export default function CompanyDashboard() {
                   </label>
                   <textarea
                     rows={4}
-                    placeholder="e.g., I was locked out of my Okta account after 3 password attempts. Need MFA reset."
+                    placeholder="e.g., I want to reset my password"
                     value={raiseTicketText}
                     onChange={(e) => setRaiseTicketText(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-white outline-none focus:border-emerald-500 font-sans"
@@ -1902,7 +1923,7 @@ export default function CompanyDashboard() {
                     <span className="text-slate-400 block font-semibold text-[11px]">
                       Source References
                     </span>
-                    {raiseResult.sourceReferences.map((ref: any, idx: number) => (
+                    {raiseResult.sourceReferences.map((ref: { page_url: string; section_title?: string }, idx: number) => (
                       <a
                         key={idx}
                         href={ref.page_url}
@@ -1955,7 +1976,7 @@ export default function CompanyDashboard() {
                   </label>
                   <textarea
                     rows={4}
-                    placeholder="e.g., How do I request VPN split tunneling route access for internal staging servers?"
+                    placeholder="e.g., I want access to Excel spreadsheet"
                     value={playgroundInput}
                     onChange={(e) => setPlaygroundInput(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-white outline-none focus:border-emerald-500 font-sans"
@@ -2036,7 +2057,7 @@ export default function CompanyDashboard() {
                     <span className="text-slate-400 block font-semibold text-[11px]">
                       Source References
                     </span>
-                    {playgroundResponse.sourceReferences.map((ref: any, idx: number) => (
+                    {playgroundResponse.sourceReferences.map((ref: { page_url: string; section_title?: string }, idx: number) => (
                       <a
                         key={idx}
                         href={ref.page_url}
@@ -2058,19 +2079,23 @@ export default function CompanyDashboard() {
         {/* ==================== TAB 6: WIDGET CUSTOMIZATION ==================== */}
         {activeTab === "widget" && (() => {
           const publicWidgetKey = company?.widgetPublicKey || "wpk_live_sample_key_1234567890";
-          const appOrigin = typeof window !== "undefined" ? window.location.origin : "https://your-itrix-domain.com";
+          const liveAppOrigin = "https://itrixai.vercel.app";
+          const scriptTagUrl = `${liveAppOrigin}/widget/v1/widget.js`;
 
-          const scriptTagSnippet = `<script src="${appOrigin}/widget.js"
+          const scriptTagSnippet = `<script src="${scriptTagUrl}"
   data-widget-key="${publicWidgetKey}"
   data-employee-id="[employee_id]"
   data-employee-email="[employee_email]"
   data-signature="[computed_hmac_sha256_signature]"
+  data-api-url="${liveAppOrigin}"
   data-bg-color="${widgetBgColor}"
   data-fg-color="${widgetFgColor}"
   data-text-color="${widgetTextColor}">
 </script>`;
 
-          const npmSnippet = `import { TicketWidget } from "@/components/widget";
+          const npmInstallCmd = "npm install @itrix/widget";
+
+          const npmSnippet = `import { TicketWidget } from "@itrix/widget";
 
 export default function MyIntranetApp() {
   // HMAC-SHA256 signature computed on host company backend using hmac_secret
@@ -2079,6 +2104,7 @@ export default function MyIntranetApp() {
   return (
     <TicketWidget
       widgetKey="${publicWidgetKey}"
+      apiUrl="${liveAppOrigin}"
       employee={{
         id: "emp_1042",
         email: "alex@company.com",
@@ -2177,10 +2203,11 @@ export default function MyIntranetApp() {
                     </div>
                   </div>
 
-                  <div className="pt-2 text-[11px] text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                    <span className="font-semibold text-slate-300 block mb-1">Public Client Configuration:</span>
+                  <div className="pt-2 text-[11px] text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 font-mono">
+                    <span className="font-semibold text-slate-300 block mb-1 font-sans">Public Integration Config:</span>
                     <div>Company Org ID: <code className="text-emerald-400 font-mono">{company?.id}</code></div>
                     <div>Widget Public Key: <code className="text-emerald-400 font-mono">{publicWidgetKey}</code></div>
+                    <div>Hosted Script URL: <code className="text-emerald-400 font-mono break-all">{scriptTagUrl}</code></div>
                   </div>
                 </div>
 
@@ -2263,14 +2290,14 @@ export default function MyIntranetApp() {
                 </h3>
 
                 {/* 1. Script Tag Version */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
-                  <div className="flex items-center justify-between">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
                         Option A: HTML Script Tag
                       </span>
                       <span className="text-xs text-slate-400">
-                        Paste into your employee portal HTML
+                        Paste into your employee portal HTML (Vanilla HTML, WordPress, PHP, Vue, Angular)
                       </span>
                     </div>
                     <button
@@ -2281,7 +2308,7 @@ export default function MyIntranetApp() {
                       {copiedScriptSnippet ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Copied</span>
+                          <span>Copied Script</span>
                         </>
                       ) : (
                         <>
@@ -2291,43 +2318,111 @@ export default function MyIntranetApp() {
                       )}
                     </button>
                   </div>
+
+                  <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 text-xs text-slate-300 flex items-center justify-between gap-2 flex-wrap font-mono">
+                    <div>
+                      <span className="text-slate-400 font-sans">Live Hosted Script URL:</span>{" "}
+                      <span className="text-emerald-400">{scriptTagUrl}</span>
+                    </div>
+                  </div>
+
                   <pre className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">
                     {scriptTagSnippet}
                   </pre>
                 </div>
 
                 {/* 2. React / npm Package Version */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
-                  <div className="flex items-center justify-between">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
                         Option B: npm React Package
                       </span>
-                      <span className="text-xs text-slate-400">
-                        import &#123; TicketWidget &#125; from '@/components/widget'
-                      </span>
+                      <a
+                        href="https://www.npmjs.com/package/@itrix/widget"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-emerald-400 hover:underline flex items-center gap-1 font-mono"
+                      >
+                        <span>npm: @itrix/widget</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(npmSnippet, "npm")}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
-                    >
-                      {copiedNpmSnippet ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy React Snippet</span>
-                        </>
-                      )}
-                    </button>
                   </div>
-                  <pre className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">
-                    {npmSnippet}
-                  </pre>
+
+                  {/* NPM Install Command Row */}
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-300">1. Install Package via Terminal</span>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(npmInstallCmd, "npmCmd")}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                      >
+                        {copiedNpmCmd ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Copied Command</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy npm install Command</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre className="text-xs font-mono text-emerald-400 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                      <code>{npmInstallCmd}</code>
+                    </pre>
+                  </div>
+
+                  {/* React Usage Snippet Row */}
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between font-mono">
+                      <span className="text-xs font-semibold text-slate-300 font-sans">2. Import Component in React Tree</span>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(npmSnippet, "npm")}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all font-sans"
+                      >
+                        {copiedNpmSnippet ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Copied React Code</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy React Snippet</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre className="text-xs font-mono text-emerald-300 bg-slate-900/80 p-3 rounded-lg border border-slate-800/80 overflow-x-auto">
+                      {npmSnippet}
+                    </pre>
+                  </div>
+                </div>
+
+                {/* 3. Documentation Banner */}
+                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl flex items-center justify-between gap-4 flex-wrap">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                      <span>Need Backend HMAC Helpers, REST API Schemas, or MCP Server Tools?</span>
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      View full server-side HMAC signature generation examples (Node & Python), endpoint schemas, and AI agent tool specs on our documentation page.
+                    </p>
+                  </div>
+                  <Link
+                    href="/docs"
+                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 shadow-lg shadow-emerald-500/20"
+                  >
+                    <span>View Documentation Page</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </Link>
                 </div>
               </div>
             </div>
@@ -2379,19 +2474,26 @@ export default function MyIntranetApp() {
                 </div>
               </div>
 
-              {/* API Key Management */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Key className="w-4 h-4 text-emerald-400" />
-                  API Key Management
+              {/* Security Credentials Section */}
+              <div className="space-y-6">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  Security Credentials & Organization Keys
                 </h3>
 
+                {/* 1. API Key Box */}
                 <div className="space-y-2 text-xs">
-                  <label className="text-slate-300 font-semibold block">
-                    Current Active API Key
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-emerald-400" />
+                      Company API Key
+                    </label>
+                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Private / Server-to-Server
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono">
-                    <span className="flex-1 text-slate-300 truncate">
+                    <span className="flex-1 text-emerald-300 truncate select-all">
                       {revealApiKey
                         ? company?.apiKey
                         : company?.apiKey
@@ -2401,7 +2503,7 @@ export default function MyIntranetApp() {
                     <button
                       type="button"
                       onClick={() => setRevealApiKey(!revealApiKey)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs flex items-center gap-1.5"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs flex items-center gap-1.5 transition-all"
                     >
                       {revealApiKey ? (
                         <>
@@ -2415,10 +2517,145 @@ export default function MyIntranetApp() {
                         </>
                       )}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (company?.apiKey) {
+                          navigator.clipboard.writeText(company.apiKey);
+                          setCopiedApiKey(true);
+                          setTimeout(() => setCopiedApiKey(false), 2000);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs flex items-center gap-1.5 transition-all"
+                    >
+                      {copiedApiKey ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
                   </div>
+                  <p className="text-[11px] text-slate-400">
+                    Used for backend server REST requests (<code className="text-emerald-300 font-mono">/api/v1/*</code>) and MCP Server auth.
+                  </p>
                 </div>
 
-                <div className="pt-2 flex items-center justify-between border-t border-slate-800">
+                {/* 2. HMAC Secret Box */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                      HMAC Employee Identity Secret
+                    </label>
+                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      Private / Backend Signing Only
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono">
+                    <span className="flex-1 text-emerald-300 truncate select-all">
+                      {revealHmacSecret
+                        ? company?.hmacSecret
+                        : company?.hmacSecret
+                        ? `${company.hmacSecret.slice(0, 9)}••••••••••••${company.hmacSecret.slice(-4)}`
+                        : "hmac_sec_••••••••••••"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRevealHmacSecret(!revealHmacSecret)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs flex items-center gap-1.5 transition-all"
+                    >
+                      {revealHmacSecret ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>Hide</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Reveal</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (company?.hmacSecret) {
+                          navigator.clipboard.writeText(company.hmacSecret);
+                          setCopiedHmacSecret(true);
+                          setTimeout(() => setCopiedHmacSecret(false), 2000);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs flex items-center gap-1.5 transition-all"
+                    >
+                      {copiedHmacSecret ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Used strictly on your company server to generate HMAC-SHA256 signatures for verified employees (<code className="text-cyan-300 font-mono">employeeId:employeeEmail</code>).
+                  </p>
+                </div>
+
+                {/* 3. Widget Public Key Box */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                      <FileCode className="w-3.5 h-3.5 text-purple-400" />
+                      Widget Public Key (Organization Distribution)
+                    </label>
+                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      Public / Client-Side Safe
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono">
+                    <span className="flex-1 text-purple-300 truncate select-all">
+                      {company?.widgetPublicKey || "wpk_live_..."}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (company?.widgetPublicKey) {
+                          navigator.clipboard.writeText(company.widgetPublicKey);
+                          setCopiedWidgetPublicKey(true);
+                          setTimeout(() => setCopiedWidgetPublicKey(false), 2000);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs flex items-center gap-1.5 transition-all"
+                    >
+                      {copiedWidgetPublicKey ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Public key safe to embed in client-side HTML <code className="text-purple-300 font-mono">&lt;script&gt;</code> tags or React npm components (<code className="text-purple-300 font-mono">&lt;TicketWidget widgetKey=&quot;...&quot; /&gt;</code>) across employee portals.
+                  </p>
+                </div>
+
+                <div className="pt-4 flex items-center justify-between border-t border-slate-800">
                   <div>
                     <span className="text-xs font-semibold text-rose-400 block">
                       Rotate API Key

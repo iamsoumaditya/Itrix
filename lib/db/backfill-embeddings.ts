@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import * as dotenv from "dotenv";
 import * as schema from "./schema";
 import { indexDocsContent } from "../embeddings";
-import { eq, notInArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 dotenv.config({ path: ".env.local" });
 

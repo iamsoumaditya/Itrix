@@ -51,10 +51,11 @@ export async function POST(req: Request) {
       defaultRoutingTeam
     );
     return NextResponse.json({ success: true, category: newCat });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     console.error("Error adding custom category/priority:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to add category" },
+      { error: err?.message || "Failed to add category" },
       { status: 400 }
     );
   }
@@ -78,10 +79,11 @@ export async function DELETE(req: Request) {
 
     await deleteCategory(id, companyId);
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     console.error("Error deleting category/priority:", error);
     return NextResponse.json(
-      { error: error?.message || "Cannot delete item" },
+      { error: err?.message || "Cannot delete item" },
       { status: 400 }
     );
   }

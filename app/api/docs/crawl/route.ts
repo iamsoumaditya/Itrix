@@ -139,10 +139,11 @@ export async function POST(req: Request) {
       status: "queued",
       message: "Documentation URL queued for processing.",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     console.error("Error in docs crawl API endpoint:", error);
     return NextResponse.json(
-      { error: error?.message || "Internal server error initiating crawl job" },
+      { error: err?.message || "Internal server error initiating crawl job" },
       { status: 500 }
     );
   }

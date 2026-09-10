@@ -34,6 +34,7 @@ export async function POST(req: Request) {
   const body = JSON.stringify(payload);
 
   const wh = new Webhook(WEBHOOK_SECRET);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let evt: any;
 
   try {
@@ -53,7 +54,10 @@ export async function POST(req: Request) {
   const eventType = evt.type;
 
   if (eventType === "organization.created") {
-    const { id, name, created_by } = evt.data;
+    const orgData = evt.data as { id: string; name?: string; created_by?: string };
+    const id = orgData.id;
+    const name = orgData.name;
+    const created_by = orgData.created_by;
 
     try {
       const apiKey = generateApiKey();

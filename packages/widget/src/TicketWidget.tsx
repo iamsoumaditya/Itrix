@@ -6,10 +6,7 @@ import {
   X,
   Send,
   Loader2,
-  CheckCircle2,
-  Clock,
   AlertCircle,
-  FileText,
   ExternalLink,
   ChevronDown,
   ChevronUp,
@@ -36,7 +33,7 @@ interface TicketRecord {
   ticketText: string;
   category: string;
   priority: string;
-  status: "auto_resolved" | "needs_review" | "pending";
+  status: "auto_resolved" | "needs_verification" | "needs_review" | "pending";
   resolved: boolean;
   suggestedResolution?: string;
   routingTeam?: string | null;
@@ -90,11 +87,18 @@ export function TicketWidget({
         },
       });
 
-      const data = await res.json();
+      const resText = await res.text();
+      let data: any = {};
+      try {
+        data = resText ? JSON.parse(resText) : {};
+      } catch {
+        data = {};
+      }
+
       if (res.ok && data.data) {
         setTicketsHistory(data.data);
       } else {
-        setErrorMessage(data.error || "Failed to load ticket history.");
+        setErrorMessage(data.error || `Failed to load ticket history (${res.status}).`);
       }
     } catch (err) {
       console.error("[TicketWidget Fetch Error]:", err);
@@ -133,12 +137,19 @@ export function TicketWidget({
         }),
       });
 
-      const data = await res.json();
+      const resText = await res.text();
+      let data: any = {};
+      try {
+        data = resText ? JSON.parse(resText) : {};
+      } catch {
+        data = {};
+      }
+
       if (res.ok && data.id) {
         setSubmitResult(data);
         setIssueText("");
       } else {
-        setErrorMessage(data.error || "An error occurred submitting your ticket.");
+        setErrorMessage(data.error || `An error occurred submitting your ticket (${res.status}).`);
       }
     } catch (err) {
       console.error("[TicketWidget Submit Error]:", err);
@@ -307,7 +318,7 @@ export function TicketWidget({
                     <textarea
                       value={issueText}
                       onChange={(e) => setIssueText(e.target.value)}
-                      placeholder="e.g. How do I setup GlobalProtect VPN and request Okta MFA reset?"
+                      placeholder="e.g. I want to reset my password or I want access to Excel spreadsheet"
                       rows={4}
                       style={{
                         width: "100%",
@@ -374,8 +385,18 @@ export function TicketWidget({
                       <span>Category: {submitResult.category}</span>
                       <span
                         style={{
-                          backgroundColor: submitResult.resolved ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)",
-                          color: submitResult.resolved ? "#34d399" : "#fbbf24",
+                          backgroundColor:
+                            submitResult.status === "auto_resolved" || submitResult.resolved
+                              ? "rgba(16, 185, 129, 0.2)"
+                              : submitResult.status === "needs_verification"
+                              ? "rgba(56, 189, 248, 0.2)"
+                              : "rgba(245, 158, 11, 0.2)",
+                          color:
+                            submitResult.status === "auto_resolved" || submitResult.resolved
+                              ? "#34d399"
+                              : submitResult.status === "needs_verification"
+                              ? "#38bdf8"
+                              : "#fbbf24",
                           padding: "2px 8px",
                           borderRadius: "9999px",
                           fontSize: "10px",
@@ -383,7 +404,7 @@ export function TicketWidget({
                           textTransform: "uppercase",
                         }}
                       >
-                        {submitResult.status}
+                        {submitResult.status?.replace("_", " ")}
                       </span>
                     </div>
 
@@ -529,11 +550,22 @@ export function TicketWidget({
                                 fontWeight: 700,
                                 padding: "2px 6px",
                                 borderRadius: "4px",
-                                backgroundColor: t.resolved ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)",
-                                color: t.resolved ? "#34d399" : "#fbbf24",
+                                textTransform: "uppercase",
+                                backgroundColor:
+                                  t.status === "auto_resolved" || t.resolved
+                                    ? "rgba(16, 185, 129, 0.2)"
+                                    : t.status === "needs_verification"
+                                    ? "rgba(56, 189, 248, 0.2)"
+                                    : "rgba(245, 158, 11, 0.2)",
+                                color:
+                                  t.status === "auto_resolved" || t.resolved
+                                    ? "#34d399"
+                                    : t.status === "needs_verification"
+                                    ? "#38bdf8"
+                                    : "#fbbf24",
                               }}
                             >
-                              {t.status}
+                              {t.status?.replace("_", " ")}
                             </span>
                             <span style={{ fontSize: "10px", color: "rgba(255, 255, 255, 0.4)" }}>
                               {new Date(t.createdAt).toLocaleDateString()}

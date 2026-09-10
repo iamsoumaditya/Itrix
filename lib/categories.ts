@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { ticketCategories, ticketPriorities, type TicketCategory, type TicketPriority } from "./db/schema";
-import { eq, isNull, or, and, asc } from "drizzle-orm";
+import { eq, isNull, or, asc } from "drizzle-orm";
 import crypto from "crypto";
 
 // Fallback global default categories in case DB is un-seeded or unreachable

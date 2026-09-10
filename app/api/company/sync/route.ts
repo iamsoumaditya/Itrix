@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCompany } from "@/lib/company";
-import { db } from "@/lib/db";
-import { companies } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -32,6 +29,7 @@ export async function GET() {
         createdBy: "user_demo",
         apiKey: "sk_live_demo_1234567890abcdef",
         hmacSecret: "hmac_sec_demo_1234567890abcdef",
+        widgetPublicKey: "wpk_live_demo_1234567890abcdef",
         onboardingStatus: "pending_docs",
         createdAt: new Date(),
       },

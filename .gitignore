@@ -40,3 +40,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .clerk/
+
+# IDE & Editor
+.vscode/
+.idea/
+
+# Database & Migrations
+/drizzle/
+
+# Workspace packages build outputs & dependencies
+packages/*/dist
+packages/*/node_modules
+

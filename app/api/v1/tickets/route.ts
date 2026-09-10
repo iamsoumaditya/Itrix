@@ -5,6 +5,29 @@ import { db } from "@/lib/db";
 import { tickets } from "@/lib/db/schema";
 import { eq, and, gte, lte, count, desc } from "drizzle-orm";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+function jsonResponse(data: unknown, init?: ResponseInit) {
+  const res = NextResponse.json(data, init);
+  Object.entries(corsHeaders).forEach(([k, v]) => res.headers.set(k, v));
+  return res;
+}
+
+/**
+ * OPTIONS /api/v1/tickets
+ * CORS Preflight for external widgets and API clients.
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 /**
  * POST /api/v1/tickets
  * Create a new ticket on behalf of an authenticated employee.
@@ -14,15 +37,17 @@ export async function POST(req: Request) {
   try {
     const auth = await validateApiRequest(req);
     if (auth.errorResponse) {
-      return auth.errorResponse;
+      const res = auth.errorResponse;
+      Object.entries(corsHeaders).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
     }
 
     const { company } = auth;
-    let body: any;
+    let body: Record<string, unknown>;
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "Invalid JSON request body" },
         { status: 400 }
       );
@@ -31,21 +56,21 @@ export async function POST(req: Request) {
     const { employeeId, employeeEmail, signature, ticketText } = body || {};
 
     if (!employeeId || typeof employeeId !== "string" || !employeeId.trim()) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "employeeId is required" },
         { status: 400 }
       );
     }
 
     if (!employeeEmail || typeof employeeEmail !== "string" || !employeeEmail.trim()) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "employeeEmail is required" },
         { status: 400 }
       );
     }
 
     if (!signature || typeof signature !== "string" || !signature.trim()) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "signature is required" },
         { status: 400 }
       );
@@ -60,7 +85,7 @@ export async function POST(req: Request) {
     );
 
     if (!isValidSignature) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "Invalid employee identity signature" },
         { status: 401 }
       );
@@ -68,7 +93,7 @@ export async function POST(req: Request) {
 
     // Edge case: Empty or whitespace-only ticket description
     if (!ticketText || typeof ticketText !== "string" || !ticketText.trim()) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "Please provide a ticket description before submitting." },
         { status: 400 }
       );
@@ -93,10 +118,10 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     };
 
-    return NextResponse.json(responsePayload, { status: 201 });
+    return jsonResponse(responsePayload, { status: 201 });
   } catch (error) {
     console.error("[API v1 POST /tickets Error]:", error);
-    return NextResponse.json(
+    return jsonResponse(
       { error: "An unexpected error occurred while processing the ticket." },
       { status: 500 }
     );
@@ -112,7 +137,9 @@ export async function GET(req: Request) {
   try {
     const auth = await validateApiRequest(req);
     if (auth.errorResponse) {
-      return auth.errorResponse;
+      const res = auth.errorResponse;
+      Object.entries(corsHeaders).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
     }
 
     const { company, keyType } = auth;
@@ -120,7 +147,7 @@ export async function GET(req: Request) {
 
     const employeeId = searchParams.get("employeeId")?.trim();
     if (!employeeId) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "employeeId query parameter is required" },
         { status: 400 }
       );
@@ -132,7 +159,7 @@ export async function GET(req: Request) {
       const signature = searchParams.get("signature")?.trim();
 
       if (!employeeEmail || !signature) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "employeeEmail and signature parameters are required when using widget public key" },
           { status: 400 }
         );
@@ -146,7 +173,7 @@ export async function GET(req: Request) {
       );
 
       if (!isValidSignature) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "Invalid employee identity signature" },
           { status: 401 }
         );
@@ -223,7 +250,7 @@ export async function GET(req: Request) {
       .limit(limit)
       .offset(offset);
 
-    return NextResponse.json({
+    return jsonResponse({
       data,
       page,
       limit,
@@ -231,7 +258,7 @@ export async function GET(req: Request) {
     });
   } catch (error) {
     console.error("[API v1 GET /tickets Error]:", error);
-    return NextResponse.json(
+    return jsonResponse(
       { error: "An unexpected error occurred while fetching tickets." },
       { status: 500 }
     );

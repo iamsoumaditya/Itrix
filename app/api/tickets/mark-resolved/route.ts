@@ -37,10 +37,11 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, ticket: updatedTicket });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     console.error("Error marking ticket as resolved:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to mark ticket as resolved" },
+      { error: err?.message || "Failed to mark ticket as resolved" },
       { status: 500 }
     );
   }

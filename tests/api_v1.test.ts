@@ -11,11 +11,28 @@ async function runTests() {
   console.log("STARTING API V1 ENDPOINT AUTOMATED TESTS");
   console.log("==========================================");
 
-  // 1. Fetch test company from DB
-  const companyRows = await db.select().from(companies).limit(1);
-  if (!companyRows || companyRows.length === 0) {
-    throw new Error("No company found in database for testing.");
+  // 1. Fetch test company from DB (auto-create if DB is unseeded)
+  let companyRows: any[] = [];
+  try {
+    companyRows = await db.select().from(companies).limit(1);
+    if (!companyRows || companyRows.length === 0) {
+      const dummyCompany = {
+        id: "org_test_suite_runner",
+        name: "Test Suite Corp",
+        createdBy: "user_test_runner",
+        apiKey: "sk_live_test_suite_1234567890abcdef",
+        hmacSecret: "hmac_sec_test_suite_1234567890abcdef",
+        widgetPublicKey: "wpk_live_test_suite_1234567890abcdef",
+        onboardingStatus: "completed",
+      };
+      await db.insert(companies).values(dummyCompany).onConflictDoNothing();
+      companyRows = [dummyCompany];
+    }
+  } catch (err) {
+    console.error("ℹ️ DB error in test setup:", err);
+    process.exit(1);
   }
+
   const testCompany = companyRows[0];
   console.log(`\n[Setup] Test Company ID: ${testCompany.id}`);
   console.log(`[Setup] API Key: ${testCompany.apiKey.substring(0, 10)}...`);
@@ -227,11 +244,9 @@ async function runTests() {
   // ----------------------------------------------------
   console.log("\n--- TEST 10: Rate Limiter (Exceeding 60 req/min) ---");
   const rateLimitTestKey = "sk_live_rate_limit_test_key_999";
-  // We insert dummy test company key into db or call validateApiRequest directly
   let rateLimited = false;
   let attempts = 0;
   
-  // Fast tight loop calling validateApiRequest
   for (let i = 0; i < 65; i++) {
     attempts++;
     const testReq = new Request("http://localhost/api/v1/tickets", {

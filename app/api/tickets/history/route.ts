@@ -22,10 +22,11 @@ export async function GET(req: Request) {
       .orderBy(asc(ticketResolutionHistory.version));
 
     return NextResponse.json({ history });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     console.error("Error fetching resolution history:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to fetch resolution history" },
+      { error: err?.message || "Failed to fetch resolution history" },
       { status: 500 }
     );
   }

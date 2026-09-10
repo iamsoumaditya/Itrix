@@ -86,10 +86,11 @@ export async function crawlDocsPage(
         },
         signal: AbortSignal.timeout(10000), // 10s timeout
       });
-    } catch (fetchErr: any) {
+    } catch (fetchErr: unknown) {
+      const err = fetchErr as { message?: string; cause?: string };
       const isRedirectError =
-        String(fetchErr?.message || "").toLowerCase().includes("redirect") ||
-        String(fetchErr?.cause || "").toLowerCase().includes("redirect");
+        String(err?.message || "").toLowerCase().includes("redirect") ||
+        String(err?.cause || "").toLowerCase().includes("redirect");
 
       if (isRedirectError) {
         return await markFailed(
@@ -271,7 +272,7 @@ export async function crawlDocsPage(
         // Generate embeddings and store in docs_embeddings
         await indexDocsContent(contentId, companyId, pageItem.contentText);
       }
-    } catch (embedErr: any) {
+    } catch {
       return await markFailed(
         "Content was extracted but indexing failed due to an API error. Please try re-crawling."
       );
@@ -311,9 +312,10 @@ export async function crawlDocsPage(
       .where(eq(docsPages.id, pageId));
 
     return { success: true, pageCount: crawledPagesData.length };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     return await markFailed(
-      error?.message || "An unexpected error occurred during documentation processing."
+      err?.message || "An unexpected error occurred during documentation processing."
     );
   }
 }

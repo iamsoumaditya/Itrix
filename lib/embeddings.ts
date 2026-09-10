@@ -1,7 +1,8 @@
 import { db } from "./db";
-import { docsEmbeddings, docsContent, type DocsEmbedding } from "./db/schema";
+import { docsEmbeddings, docsContent } from "./db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
+import { geminiPool, GeminiPoolExhaustedError } from "./ai/gemini-pool";
 
 /**
  * Deterministic fallback 768-dimensional vector generator when API key is unconfigured or model unavailable.
@@ -25,7 +26,7 @@ export function createMockEmbedding(text: string): number[] {
 /**
  * Safely parse pgvector string or array data into a numeric vector array.
  */
-export function parseVector(val: any): number[] {
+export function parseVector(val: unknown): number[] {
   if (!val) return [];
   if (Array.isArray(val)) return val.map(Number);
   if (typeof val === "string") {
@@ -44,54 +45,22 @@ export function parseVector(val: any): number[] {
 }
 
 /**
- * Generate 768-dim vector embedding using Gemini's API with model fallback & mock failover.
+ * Generate 768-dim vector embedding using Gemini's API key pool with model fallback & mock failover.
  */
 export async function generateEmbedding(textToEmbed: string): Promise<number[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim().length === 0) {
-    if (process.env.DEBUG) {
-      console.log(`[DEBUG] No GEMINI_API_KEY set, using mock embedding.`);
+  const candidateModels = ["gemini-embedding-001", "gemini-embedding-2-preview", "gemini-embedding-2"];
+
+  try {
+    const res = await geminiPool.embedContent(candidateModels, textToEmbed);
+    return res.embedding;
+  } catch (err) {
+    if (err instanceof GeminiPoolExhaustedError) {
+      console.warn(`[Embedding Pool] All Gemini API keys exhausted or rate-limited. Falling back to mock embedding.`);
+    } else {
+      console.warn(`[Embedding Pool Error]:`, err);
     }
     return createMockEmbedding(textToEmbed);
   }
-
-  // Candidate embedding models supported by Google Gemini API
-  const candidateModels = ["gemini-embedding-001", "gemini-embedding-2-preview", "gemini-embedding-2"];
-
-  for (const modelName of candidateModels) {
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:embedContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: {
-              parts: [{ text: textToEmbed }],
-            },
-            outputDimensionality: 768,
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.embedding?.values && Array.isArray(data.embedding.values)) {
-          return data.embedding.values;
-        }
-      } else {
-        const errText = await response.text();
-        console.warn(`[Embedding API] Model ${modelName} returned status ${response.status}: ${errText}`);
-      }
-    } catch (err) {
-      console.warn(`[Embedding API] Exception with ${modelName}:`, err);
-    }
-  }
-
-  if (process.env.DEBUG) {
-    console.warn(`[DEBUG] All Gemini embedding models failed. Falling back to mock embedding.`);
-  }
-  return createMockEmbedding(textToEmbed);
 }
 
 /**
@@ -192,27 +161,6 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/**
- * Computes keyword overlap score between query and target content text/title.
- */
-function calculateKeywordScore(query: string, chunk: string, title: string | null): number {
-  const words = query
-    .toLowerCase()
-    .replace(/[^\w\s]/g, "")
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !["the", "and", "for", "with", "how", "what", "this", "that", "need", "help"].includes(w));
-
-  if (words.length === 0) return 0;
-
-  const targetText = `${title || ""} ${chunk}`.toLowerCase();
-  let matches = 0;
-  for (const word of words) {
-    if (targetText.includes(word)) {
-      matches += 1;
-    }
-  }
-  return matches / words.length;
-}
 
 /**
  * Detects if a chunk is developer documentation / code snippet rather than end-user IT support text.
@@ -310,17 +258,19 @@ export async function retrieveRelevantDocs(
         console.log(`[DEBUG RAG] No docs found in DB for companyId: ${companyId}`);
       }
       const emptyResult: RetrievedDocChunk[] = [];
-      (emptyResult as any).ragDebugDetails = {
-        queryVectorDimension: queryVector.length,
-        totalCompanyEmbeddingsCount: 0,
-        rawCandidateChunks: [],
-        filteringDetails: {
-          thresholdValue: similarityThreshold,
-          keptChunks: [],
-          discardedChunks: [],
-        },
-        finalReturnedArray: [],
-      } satisfies RagDebugOutput;
+      Object.assign(emptyResult, {
+        ragDebugDetails: {
+          queryVectorDimension: queryVector.length,
+          totalCompanyEmbeddingsCount: 0,
+          rawCandidateChunks: [],
+          filteringDetails: {
+            thresholdValue: similarityThreshold,
+            keptChunks: [],
+            discardedChunks: [],
+          },
+          finalReturnedArray: [],
+        } satisfies RagDebugOutput,
+      });
       return emptyResult;
     }
 
@@ -434,7 +384,7 @@ export async function retrieveRelevantDocs(
       })),
     };
 
-    (finalResult as any).ragDebugDetails = ragDebugOutput;
+    Object.assign(finalResult, { ragDebugDetails: ragDebugOutput });
     return finalResult;
   } catch (error) {
     console.error("Error in retrieveRelevantDocs:", error);

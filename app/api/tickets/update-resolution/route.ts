@@ -79,10 +79,11 @@ export async function POST(req: Request) {
       ticket: updatedTicket,
       historyEntry,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     console.error("Error updating ticket resolution:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to update ticket resolution" },
+      { error: err?.message || "Failed to update ticket resolution" },
       { status: 500 }
     );
   }

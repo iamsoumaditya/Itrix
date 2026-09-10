@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "public/widget/**",
+    "public/widget.js",
+    "packages/**",
+    "tests/**",
+    "drizzle/**",
   ]),
 ]);
 

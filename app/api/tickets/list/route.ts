@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const searchEmployee = searchParams.get("searchEmployee") || searchParams.get("searchUser");
 
   try {
-    let conditions = [eq(tickets.companyId, companyId)];
+    const conditions = [eq(tickets.companyId, companyId)];
 
     if (statusFilter && statusFilter !== "all") {
       conditions.push(eq(tickets.status, statusFilter));

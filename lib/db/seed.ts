@@ -1,6 +1,5 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq } from "drizzle-orm";
 import * as dotenv from "dotenv";
 import * as schema from "./schema";
 import { FALLBACK_GLOBAL_CATEGORIES, FALLBACK_GLOBAL_PRIORITIES } from "../categories";
@@ -115,6 +114,18 @@ async function seed() {
       );
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS ticket_resolution_history (
+        id TEXT PRIMARY KEY,
+        ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL,
+        resolution TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        notes TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `;
+
     // Add normalized_url column to docs_pages if missing
     try {
       await sql`ALTER TABLE docs_pages ADD COLUMN IF NOT EXISTS normalized_url TEXT;`;
@@ -182,210 +193,6 @@ async function seed() {
   }
   console.log("✅ Seeded 3 global default priorities.");
 
-  // 4. Upsert sample demo company
-  const demoOrgId = "org_demo_acme_corp";
-  const demoUser = "user_demo_admin";
-
-  await db
-    .insert(schema.companies)
-    .values({
-      id: demoOrgId,
-      name: "Acme Corp (Internal IT)",
-      createdBy: demoUser,
-      apiKey: "sk_live_demo_9876543210fedcba",
-      hmacSecret: "hmac_sec_demo_1234567890abcdef",
-      widgetPublicKey: "wpk_live_demo_1234567890abcdef",
-      onboardingStatus: "completed",
-    })
-    .onConflictDoUpdate({
-      target: schema.companies.id,
-      set: {
-        name: "Acme Corp (Internal IT)",
-        onboardingStatus: "completed",
-      },
-    });
-
-  console.log("✅ Seeded demo company: Acme Corp (Internal IT)");
-
-  // 5. Sample Docs Pages for Internal IT
-  const docsData = [
-    {
-      id: "doc_page_1",
-      companyId: demoOrgId,
-      url: "https://it-docs.acmecorp.com/vpn-access-guide",
-      status: "indexed",
-      pageCount: 14,
-      lastCrawledAt: new Date(Date.now() - 3600 * 1000 * 2),
-    },
-    {
-      id: "doc_page_2",
-      companyId: demoOrgId,
-      url: "https://it-docs.acmecorp.com/mfa-reset-procedure",
-      status: "indexed",
-      pageCount: 8,
-      lastCrawledAt: new Date(Date.now() - 3600 * 1000 * 5),
-    },
-    {
-      id: "doc_page_3",
-      companyId: demoOrgId,
-      url: "https://it-docs.acmecorp.com/hardware-laptop-procurement",
-      status: "indexed",
-      pageCount: 6,
-      lastCrawledAt: new Date(Date.now() - 3600 * 1000 * 24),
-    },
-  ];
-
-  for (const doc of docsData) {
-    await db
-      .insert(schema.docsPages)
-      .values(doc)
-      .onConflictDoUpdate({
-        target: schema.docsPages.id,
-        set: { status: doc.status, pageCount: doc.pageCount },
-      });
-  }
-
-  // 6. Seed sample IT docs content & vector embeddings
-  const sampleDocText =
-    "To connect to the internal network remotely, download GlobalProtect VPN client v6.1+, set portal address to vpn.acmecorp.com, and authenticate with Okta SSO credentials. For self-service password reset, go to portal.acmecorp.com/reset. For Okta MFA seed resets, access portal.acmecorp.com/mfa.";
-
-  // Delete existing demo embeddings to ensure fresh vector embeddings are generated
-  await db.delete(schema.docsEmbeddings).where(eq(schema.docsEmbeddings.companyId, demoOrgId));
-
-  await db
-    .insert(schema.docsContent)
-    .values({
-      id: "doc_content_1",
-      docsPageId: "doc_page_1",
-      pageUrl: "https://it-docs.acmecorp.com/vpn-access-guide#global-protect",
-      sectionTitle: "GlobalProtect VPN Configuration & Password Reset",
-      contentText: sampleDocText,
-    })
-    .onConflictDoNothing();
-
-  // Index vector embeddings for sample doc content
-  const { indexDocsContent } = await import("../embeddings");
-  await indexDocsContent("doc_content_1", demoOrgId, sampleDocText);
-
-  // 7. Seed Placeholder Employee IT Tickets
-  const sampleTickets = [
-    {
-      id: "tkt_101",
-      companyId: demoOrgId,
-      employeeId: "emp_alex_99",
-      ticketText:
-        "I was locked out of my Okta account after 3 failed password attempts. Need MFA seed reset for my new iPhone 16.",
-      category: "Password Reset",
-      priority: "High",
-      confidence: 0.95,
-      suggestedResolution:
-        "According to your Okta MFA reset procedure doc, navigate to self-service portal at portal.acmecorp.com/reset to trigger an SMS verification link.",
-      sourceReferences: [
-        {
-          page_url: "https://it-docs.acmecorp.com/mfa-reset-procedure",
-          section_title: "Self-Service Okta MFA Reset",
-        },
-      ],
-      autoResolveEligible: true,
-      needsManualReview: false,
-      status: "auto_resolved",
-      resolved: true,
-      routingTeam: "IT Access Team",
-      createdAt: new Date(Date.now() - 1000 * 60 * 15),
-    },
-    {
-      id: "tkt_102",
-      companyId: demoOrgId,
-      employeeId: "emp_sarah_42",
-      ticketText:
-        "How do I request a JetBrains All Products Pack license for our engineering team's new Q3 sprint project?",
-      category: "Access Request",
-      priority: "Medium",
-      confidence: 0.88,
-      suggestedResolution:
-        "Submit a License Approval request via the internal IT portal under Software Licenses.",
-      sourceReferences: [
-        {
-          page_url: "https://it-docs.acmecorp.com/software-licenses",
-          section_title: "Developer License Procurement",
-        },
-      ],
-      autoResolveEligible: false,
-      needsManualReview: false,
-      status: "needs_review",
-      resolved: false,
-      routingTeam: "IT Access Team",
-      createdAt: new Date(Date.now() - 1000 * 60 * 45),
-    },
-    {
-      id: "tkt_103",
-      companyId: demoOrgId,
-      employeeId: "emp_dev_marcus",
-      ticketText:
-        "GlobalProtect VPN connects successfully but internal staging environment endpoints return connection timeout.",
-      category: "Software Issue",
-      priority: "High",
-      confidence: 0.72,
-      suggestedResolution:
-        "Check your DNS settings in GlobalProtect VPN client preferences and ensure split tunneling routes are active.",
-      sourceReferences: [
-        {
-          page_url: "https://it-docs.acmecorp.com/vpn-access-guide#troubleshooting",
-          section_title: "VPN Split Tunneling Routing",
-        },
-      ],
-      autoResolveEligible: false,
-      needsManualReview: false,
-      status: "needs_review",
-      resolved: false,
-      routingTeam: "Software Support Team",
-      createdAt: new Date(Date.now() - 1000 * 60 * 120),
-    },
-    {
-      id: "tkt_104",
-      companyId: demoOrgId,
-      employeeId: "emp_tech_dave",
-      ticketText:
-        "My MacBook Pro battery health alert is showing 'Service Recommended'. Keyboard keys 'E' and 'R' are also sticking.",
-      category: "Hardware Fault",
-      priority: "Medium",
-      confidence: 0.91,
-      suggestedResolution:
-        "Hardware faults require physical inspection. Escalated to IT Service Desk at Building B.",
-      sourceReferences: [
-        {
-          page_url: "https://it-docs.acmecorp.com/hardware-laptop-procurement",
-          section_title: "Hardware Repair & Replacement Policy",
-        },
-      ],
-      autoResolveEligible: false,
-      needsManualReview: true,
-      status: "needs_review",
-      resolved: false,
-      routingTeam: "Hardware Support Team",
-      createdAt: new Date(Date.now() - 1000 * 60 * 360),
-    },
-  ];
-
-  for (const tkt of sampleTickets) {
-    await db
-      .insert(schema.tickets)
-      .values(tkt)
-      .onConflictDoUpdate({
-        target: schema.tickets.id,
-        set: {
-          ticketText: tkt.ticketText,
-          category: tkt.category,
-          priority: tkt.priority,
-          status: tkt.status,
-          suggestedResolution: tkt.suggestedResolution,
-          resolved: tkt.resolved,
-          routingTeam: tkt.routingTeam,
-        },
-      });
-  }
-
-  console.log(`✅ Seeded ${sampleTickets.length} placeholder employee IT tickets!`);
   console.log("🎉 Database seeding completed successfully!");
 }
 

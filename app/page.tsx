@@ -14,21 +14,16 @@ import {
   Zap,
   Code2,
   Sparkles,
-  Search,
   CheckCircle2,
   ExternalLink,
   MessageSquare,
   ChevronRight,
   Database,
-  Sliders,
-  Terminal,
-  Cpu,
-  UserCheck,
 } from "lucide-react";
 
 export default function LandingPage() {
   const { isSignedIn, isLoaded } = useUser();
-  const [sampleQuery, setSampleQuery] = useState(
+  const [sampleQuery] = useState(
     "How do I configure GlobalProtect VPN and reset Okta MFA on my corporate laptop?"
   );
 
@@ -124,7 +119,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="mt-6 text-lg text-slate-300 leading-relaxed">
-              Index your company's internal IT knowledge base so your employees get instant, accurate IT troubleshooting for password resets, VPN access, and hardware requests — before tickets reach your IT staff.
+              Index your company&apos;s internal IT knowledge base so your employees get instant, accurate IT troubleshooting for password resets, VPN access, and hardware requests — before tickets reach your IT staff.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -217,7 +212,7 @@ export default function LandingPage() {
                       </a>
                     </div>
                     <p className="text-slate-400 italic">
-                      "Section 3.2: Corporate VPN Configuration & Okta Multi-Factor Authentication Reset Procedure"
+                      &quot;Section 3.2: Corporate VPN Configuration &amp; Okta Multi-Factor Authentication Reset Procedure&quot;
                     </p>
                   </div>
                 </div>
@@ -304,7 +299,7 @@ export default function LandingPage() {
               </span>
             </div>
             <div className="text-xs text-slate-500 font-mono">
-              data-org-key="org_live_acme_corp"
+              data-org-key=&quot;org_live_acme_corp&quot;
             </div>
           </div>
 

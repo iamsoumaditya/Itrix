@@ -16,8 +16,8 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
-  Sparkles,
   FileText,
+  Code2,
 } from "lucide-react";
 
 interface CompanyData {
@@ -25,6 +25,7 @@ interface CompanyData {
   name: string;
   apiKey: string;
   hmacSecret: string;
+  widgetPublicKey?: string;
   onboardingStatus: string;
 }
 
@@ -50,6 +51,7 @@ export default function OnboardingPage() {
   // Copy state
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [copiedWidgetKey, setCopiedWidgetKey] = useState(false);
 
   // Docs crawling state
   const [urlInput, setUrlInput] = useState("");
@@ -113,7 +115,11 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (company?.id) {
-      fetchDocPages(company.id);
+      const cid = company.id;
+      const load = async () => {
+        await fetchDocPages(cid);
+      };
+      void load();
     }
   }, [company?.id]);
 
@@ -146,6 +152,14 @@ export default function OnboardingPage() {
       navigator.clipboard.writeText(company.hmacSecret);
       setCopiedSecret(true);
       setTimeout(() => setCopiedSecret(false), 2000);
+    }
+  };
+
+  const handleCopyWidgetKey = () => {
+    if (company?.widgetPublicKey) {
+      navigator.clipboard.writeText(company.widgetPublicKey);
+      setCopiedWidgetKey(true);
+      setTimeout(() => setCopiedWidgetKey(false), 2000);
     }
   };
 
@@ -298,10 +312,10 @@ export default function OnboardingPage() {
             <div>
               <h2 className="text-xl font-semibold text-white flex items-center gap-2">
                 <Shield className="w-5 h-5 text-emerald-400" />
-                API Credentials & HMAC Secret
+                Organization Keys & Credentials
               </h2>
               <p className="text-sm text-slate-400 mt-1">
-                These security keys uniquely identify your company organization and sign embedded widget employee identity.
+                These security keys uniquely identify your company organization, authenticate backend APIs, and secure embedded client widgets.
               </p>
             </div>
 
@@ -315,10 +329,15 @@ export default function OnboardingPage() {
 
             {/* API Key Box */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-emerald-400" />
-                Company API Key
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-emerald-400" />
+                  Company API Key
+                </label>
+                <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Private / Server-to-Server
+                </span>
+              </div>
               <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-sm">
                 <span className="flex-1 text-emerald-300 truncate select-all">
                   {company?.apiKey}
@@ -341,14 +360,22 @@ export default function OnboardingPage() {
                   )}
                 </button>
               </div>
+              <p className="text-[11px] text-slate-400">
+                Used for backend server requests to <code className="text-emerald-300 font-mono">/api/v1/*</code> and MCP Server connections.
+              </p>
             </div>
 
             {/* HMAC Secret Box */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-cyan-400" />
-                HMAC Employee Identity Secret
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                  HMAC Employee Identity Secret
+                </label>
+                <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  Private / Backend Signing Only
+                </span>
+              </div>
               <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-sm">
                 <span className="flex-1 text-emerald-300 truncate select-all">
                   {company?.hmacSecret}
@@ -371,6 +398,47 @@ export default function OnboardingPage() {
                   )}
                 </button>
               </div>
+              <p className="text-[11px] text-slate-400">
+                Used strictly on your company server to generate HMAC-SHA256 signatures for verified employees (<code className="text-cyan-300 font-mono">employeeId:employeeEmail</code>).
+              </p>
+            </div>
+
+            {/* Widget Public Key Box */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Code2 className="w-3.5 h-3.5 text-purple-400" />
+                  Widget Public Key (Organization Distribution)
+                </label>
+                <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  Public / Client-Side Safe
+                </span>
+              </div>
+              <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-sm">
+                <span className="flex-1 text-purple-300 truncate select-all">
+                  {company?.widgetPublicKey || "wpk_live_..."}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyWidgetKey}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-sans font-medium flex items-center gap-1.5 transition-all"
+                >
+                  {copiedWidgetKey ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                <strong>How to distribute across your Organization:</strong> Public key safe to embed in client-side HTML <code className="text-purple-300 font-mono">&lt;script&gt;</code> tags or React npm components (<code className="text-purple-300 font-mono">&lt;TicketWidget widgetKey=&quot;...&quot; /&gt;</code>) deployed on employee internal portals and apps.
+              </p>
             </div>
 
             <div className="pt-4 flex justify-end">

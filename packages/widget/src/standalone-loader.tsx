@@ -23,6 +23,18 @@ function initWidget() {
     }
   }
 
+  let scriptOrigin = "";
+  if (scriptEl?.src) {
+    try {
+      const parsedUrl = new URL(scriptEl.src, window.location.href);
+      if (parsedUrl.protocol.startsWith("http")) {
+        scriptOrigin = parsedUrl.origin;
+      }
+    } catch {
+      // Ignore invalid URL parse
+    }
+  }
+
   const widgetKey = scriptEl?.getAttribute("data-widget-key") || "";
   const employeeId = scriptEl?.getAttribute("data-employee-id") || "";
   const employeeEmail = scriptEl?.getAttribute("data-employee-email") || "";
@@ -30,7 +42,10 @@ function initWidget() {
   const bgColor = scriptEl?.getAttribute("data-bg-color") || "#0F172A";
   const fgColor = scriptEl?.getAttribute("data-fg-color") || "#10B981";
   const textColor = scriptEl?.getAttribute("data-text-color") || "#FFFFFF";
-  const apiUrl = scriptEl?.getAttribute("data-api-url") || window.location.origin;
+  const apiUrl =
+    scriptEl?.getAttribute("data-api-url") ||
+    scriptOrigin ||
+    (typeof window !== "undefined" ? window.location.origin : "");
 
   // Create Shadow Host & Shadow DOM
   const shadowHost = document.createElement("div");

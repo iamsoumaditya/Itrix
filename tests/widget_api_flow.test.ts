@@ -9,22 +9,26 @@ async function runTests() {
   console.log("  RUNNING WIDGET & REST API AUTH VERIFICATION");
   console.log("=========================================\n");
 
-  const companyRows = await db
-    .select()
-    .from(companies)
-    .where(eq(companies.id, "org_demo_acme_corp"))
-    .limit(1);
-
+  let companyRows = await db.select().from(companies).limit(1);
   if (!companyRows || companyRows.length === 0) {
-    console.error("Demo company not found in DB.");
-    process.exit(1);
+    const dummyCompany = {
+      id: "org_test_suite_runner",
+      name: "Test Suite Corp",
+      createdBy: "user_test_runner",
+      apiKey: "sk_live_test_suite_1234567890abcdef",
+      hmacSecret: "hmac_sec_test_suite_1234567890abcdef",
+      widgetPublicKey: "wpk_live_test_suite_1234567890abcdef",
+      onboardingStatus: "completed",
+    };
+    await db.insert(companies).values(dummyCompany).onConflictDoNothing();
+    companyRows = [dummyCompany];
   }
 
   const company = companyRows[0];
   console.log(`Test Company: ${company.name} (${company.id})`);
-  console.log(`  Private API Key: ${company.apiKey}`);
+  console.log(`  Private API Key: ${company.apiKey.substring(0, 8)}...`);
   console.log(`  Widget Public Key: ${company.widgetPublicKey}`);
-  console.log(`  HMAC Secret: ${company.hmacSecret}\n`);
+  console.log(`  HMAC Secret: ${company.hmacSecret.substring(0, 8)}...\n`);
 
   const employeeId = "emp_widget_test_99";
   const employeeEmail = "alex.widget.test@acmecorp.com";

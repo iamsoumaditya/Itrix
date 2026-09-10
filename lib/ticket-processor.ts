@@ -1,8 +1,9 @@
 import { db } from "./db";
-import { tickets, ticketResolutionHistory, type Ticket } from "./db/schema";
+import { tickets, ticketResolutionHistory } from "./db/schema";
 import { getCategoriesForCompany, getPrioritiesForCompany } from "./categories";
 import { retrieveRelevantDocs, type RetrievedDocChunk } from "./embeddings";
 import crypto from "crypto";
+import { geminiPool, GeminiPoolExhaustedError } from "./ai/gemini-pool";
 
 export interface ProcessTicketResult {
   id?: string;
@@ -17,12 +18,12 @@ export interface ProcessTicketResult {
   sourceReferences: Array<{ page_url: string; section_title?: string }>;
   autoResolveEligible: boolean;
   needsManualReview: boolean;
-  status: "auto_resolved" | "needs_review" | "pending";
+  status: "auto_resolved" | "needs_verification" | "needs_review" | "pending";
   resolved: boolean;
   error?: string;
   debugDetails?: {
     injectedCategoriesString: string;
-    rawLlmResponse: any;
+    rawLlmResponse: unknown;
     stringComparisons: string[];
     overrideReason: string;
   };
@@ -114,7 +115,7 @@ async function classifyTicket(
   category: string;
   priority: string;
   confidence: number;
-  rawLlmResponse: any;
+  rawLlmResponse: unknown;
   injectedCategoriesString: string;
 }> {
   const categoryNames = categoriesList.map((c) => c.name);
@@ -126,17 +127,6 @@ async function classifyTicket(
         `- "${c.name}": ${c.description || "Specific IT requests belonging to this category."}`
     )
     .join("\n");
-
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey || apiKey.trim().length === 0) {
-    const hResult = heuristicClassify(ticketText, categoryNames, priorityNames);
-    return {
-      ...hResult,
-      rawLlmResponse: { ...hResult, _source: "heuristic_fallback_no_key" },
-      injectedCategoriesString: categoryDescriptions,
-    };
-  }
 
   const prompt = `You are an internal IT Ticket Classification Specialist.
 Analyze the employee IT ticket description below and classify it into the most accurate Category and Priority.
@@ -170,48 +160,39 @@ EMPLOYEE TICKET DESCRIPTION:
 
   const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
 
-  for (const m of candidateModels) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json" },
-          }),
-        }
-      );
+  try {
+    const res = await geminiPool.generateContent(candidateModels, prompt, {
+      responseMimeType: "application/json",
+    });
+    const parsed = JSON.parse(res.text);
 
-      if (res.ok) {
-        const data = await res.json();
-        const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-        const parsed = JSON.parse(rawJsonText);
-
-        if (process.env.DEBUG || process.env.DEBUG_MODE) {
-          console.log(`[DEBUG Gemini RAW Classification] Model ${m} returned:`, parsed);
-        }
-
-        return {
-          category: (parsed.category || "General IT Query").trim(),
-          priority: (parsed.priority || "Medium").trim(),
-          confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.85,
-          rawLlmResponse: parsed,
-          injectedCategoriesString: categoryDescriptions,
-        };
-      }
-    } catch (err) {
-      console.warn(`Gemini Classification API error with model ${m}:`, err);
+    if (process.env.DEBUG || process.env.DEBUG_MODE) {
+      console.log(`[DEBUG Gemini RAW Classification] Model ${res.model} returned:`, parsed);
     }
-  }
 
-  const hResult = heuristicClassify(ticketText, categoryNames, priorityNames);
-  return {
-    ...hResult,
-    rawLlmResponse: { ...hResult, _source: "heuristic_fallback_api_error" },
-    injectedCategoriesString: categoryDescriptions,
-  };
+    return {
+      category: (parsed.category || "General IT Query").trim(),
+      priority: (parsed.priority || "Medium").trim(),
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.85,
+      rawLlmResponse: parsed,
+      injectedCategoriesString: categoryDescriptions,
+    };
+  } catch (err) {
+    if (err instanceof GeminiPoolExhaustedError) {
+      console.warn(
+        `[TicketProcessor Pool Alert] Gemini pool exhausted during classification. Falling back to heuristic classification.`
+      );
+    } else {
+      console.warn(`[TicketProcessor Error] Classification API call failed:`, err);
+    }
+
+    const hResult = heuristicClassify(ticketText, categoryNames, priorityNames);
+    return {
+      ...hResult,
+      rawLlmResponse: { ...hResult, _source: "heuristic_fallback_api_error" },
+      injectedCategoriesString: categoryDescriptions,
+    };
+  }
 }
 
 /**
@@ -297,42 +278,31 @@ Return ONLY a raw JSON object with NO markdown block or formatting:
 
   const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
 
-  for (const m of candidateModels) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json" },
-          }),
-        }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-        const parsed = JSON.parse(rawText);
-        return {
-          can_resolve: Boolean(parsed.can_resolve),
-          suggested_resolution:
-            parsed.suggested_resolution || "No relevant resolution found in internal knowledge base.",
-          routing_team: parsed.routing_team || fallbackTeam,
-        };
-      }
-    } catch (err) {
-      console.warn(`Resolution sufficiency call failed with model ${m}:`, err);
+  try {
+    const res = await geminiPool.generateContent(candidateModels, prompt, {
+      responseMimeType: "application/json",
+    });
+    const parsed = JSON.parse(res.text);
+    return {
+      can_resolve: Boolean(parsed.can_resolve),
+      suggested_resolution:
+        parsed.suggested_resolution || "No relevant resolution found in internal knowledge base.",
+      routing_team: parsed.routing_team || fallbackTeam,
+    };
+  } catch (err) {
+    if (err instanceof GeminiPoolExhaustedError) {
+      console.warn(`[TicketProcessor Pool Alert] Gemini pool exhausted during resolution evaluation.`);
+    } else {
+      console.warn(`[TicketProcessor Error] Resolution evaluation failed:`, err);
     }
-  }
 
-  const topChunk = retrievedChunks[0];
-  return {
-    can_resolve: true,
-    suggested_resolution: `According to internal documentation (${topChunk.sectionTitle || topChunk.pageUrl}):\n\n${topChunk.chunkText}`,
-    routing_team: fallbackTeam,
-  };
+    const topChunk = retrievedChunks[0];
+    return {
+      can_resolve: true,
+      suggested_resolution: `According to internal documentation (${topChunk.sectionTitle || topChunk.pageUrl}):\n\n${topChunk.chunkText}`,
+      routing_team: fallbackTeam,
+    };
+  }
 }
 
 /**
@@ -415,7 +385,7 @@ export async function processTicket(
     rawLlmResponse: rawClassification.rawLlmResponse,
     stringComparisons,
     overrideReason,
-    ragDebug: (retrievedChunks as any).ragDebugDetails,
+    ragDebug: (retrievedChunks as unknown as { ragDebugDetails?: unknown }).ragDebugDetails,
   };
 
   if (process.env.DEBUG || process.env.DEBUG_MODE) {
@@ -464,8 +434,16 @@ export async function processTicket(
     suggestedResolution = "No relevant resolution found in internal knowledge base.";
   }
 
-  let status: "auto_resolved" | "needs_review" | "pending" = "needs_review";
-  let isResolved = false; // Always require admin/user confirmation/action to mark resolved
+  // Determine Ticket Status:
+  // - "needs_verification": AI successfully understood the issue and generated an answer/resolution.
+  // - "needs_review": AI couldn't understand properly, no knowledge base resolution found, or human intervention needed.
+  let status: "auto_resolved" | "needs_verification" | "needs_review" | "pending" = "needs_review";
+
+  if (canResolve && confidence >= 0.5) {
+    status = "needs_verification";
+  } else {
+    status = "needs_review";
+  }
 
   const ticketId = `tkt_${crypto.randomBytes(10).toString("hex")}`;
 
@@ -508,7 +486,7 @@ export async function processTicket(
         sourceReferences,
         autoResolveEligible: canResolve && confidence >= 0.5,
         needsManualReview: true,
-        status: "needs_review",
+        status,
         resolved: false,
         routingTeam,
       });
