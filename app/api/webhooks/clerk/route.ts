@@ -29,10 +29,8 @@ export async function POST(req: Request) {
     );
   }
 
-  // Get raw body text
-  const payload = await req.json();
-  const body = JSON.stringify(payload);
-
+  // Get raw body text (MUST use req.text() for Svix signature verification!)
+  const body = await req.text();
   const wh = new Webhook(WEBHOOK_SECRET);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let evt: any;
@@ -47,6 +45,13 @@ export async function POST(req: Request) {
     console.error("Error verifying Clerk webhook:", err);
     return NextResponse.json(
       { error: "Invalid webhook signature" },
+      { status: 400 }
+    );
+  }
+
+  if (!evt) {
+    return NextResponse.json(
+      { error: "Webhook verification yielded empty event" },
       { status: 400 }
     );
   }
