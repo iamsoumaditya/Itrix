@@ -11,8 +11,8 @@ export default function SignUpPage() {
           </div>
           <span className="text-xl font-bold text-white tracking-tight">ITrix</span>
         </div>
-        <h1 className="text-2xl font-bold text-white">Create your company IT account</h1>
-        <p className="text-sm text-slate-400 mt-1">Start resolving employee IT tickets faster with AI</p>
+        <h1 className="text-2xl font-bold text-white">Create your company account</h1>
+        <p className="text-sm text-slate-400 mt-1">Start resolving employee tickets faster with AI</p>
       </div>
       <SignUp
         appearance={{
